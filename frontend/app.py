@@ -16,20 +16,31 @@ SIM_API_KEY = os.getenv('SIM_API_KEY')
 # Initialize session state for selected ENS
 if 'selected_ens_for_main' not in st.session_state:
     st.session_state['selected_ens_for_main'] = None
-if 'current_page' not in st.session_state:
-    st.session_state['current_page'] = "ENS Main Lookup"
+if 'active_page' not in st.session_state:
+    st.session_state['active_page'] = "ENS Main Lookup"
 
 # Check if we need to switch to main lookup from a node click
 if st.session_state.get('selected_ens_for_main'):
-    st.session_state['current_page'] = "ENS Main Lookup"
+    st.session_state['active_page'] = "ENS Main Lookup"
 
-# Create tabs for navigation
-tab1, tab2 = st.tabs(["🔎 ENS Main Lookup", "🕸️ ENS List Lookup"])
+# Create navigation buttons
+col1, col2 = st.columns([1, 1])
+with col1:
+    if st.button("🔎 ENS Main Lookup", use_container_width=True, 
+                 type="primary" if st.session_state['active_page'] == "ENS Main Lookup" else "secondary"):
+        st.session_state['active_page'] = "ENS Main Lookup"
+        st.rerun()
+with col2:
+    if st.button("🕸️ ENS List Lookup", use_container_width=True,
+                 type="primary" if st.session_state['active_page'] == "ENS List Lookup" else "secondary"):
+        st.session_state['active_page'] = "ENS List Lookup"
+        st.rerun()
 
-with tab1:
+st.divider()
+
+# Display content based on active page
+if st.session_state['active_page'] == "ENS Main Lookup":
     st.write("Enter an ENS name to view the 4 key metrics.")
-    
-    # Use selected ENS from graph if available, otherwise use default
     default_ens = st.session_state.get('selected_ens_for_main', 'vitalik.eth')
     ens_name = st.text_input("ENS Name", default_ens)
     
@@ -127,7 +138,7 @@ with tab1:
             else:
                 st.info("No internal transactions found.")
 
-with tab2:
+elif st.session_state['active_page'] == "ENS List Lookup":
     st.write("Enter a comma-separated list of ENS names to visualize their social network.")
     
     ens_list = st.text_area("ENS Names (comma separated)", "vitalik.eth, balajis.eth, brantley.eth")
