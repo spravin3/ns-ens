@@ -19,28 +19,27 @@ if 'selected_ens_for_main' not in st.session_state:
 if 'current_page' not in st.session_state:
     st.session_state['current_page'] = "ENS Main Lookup"
 
-pages = ["ENS Main Lookup", "ENS List Lookup"]
-
 # Check if we need to switch to main lookup from a node click
 if st.session_state.get('selected_ens_for_main'):
     st.session_state['current_page'] = "ENS Main Lookup"
 
-page = st.sidebar.selectbox("Select Page", pages, index=pages.index(st.session_state['current_page']))
-st.session_state['current_page'] = page
+# Create tabs for navigation
+tab1, tab2 = st.tabs(["🔎 ENS Main Lookup", "🕸️ ENS List Lookup"])
 
-if page == "ENS Main Lookup":
-    st.title("🔎 ENS Main Lookup")
+with tab1:
     st.write("Enter an ENS name to view the 4 key metrics.")
     
     # Use selected ENS from graph if available, otherwise use default
     default_ens = st.session_state.get('selected_ens_for_main', 'vitalik.eth')
     ens_name = st.text_input("ENS Name", default_ens)
     
-    # Clear the selected ENS after loading it
+    # Auto-lookup if ENS was selected from graph
+    auto_lookup = False
     if st.session_state.get('selected_ens_for_main'):
+        auto_lookup = True
         st.session_state['selected_ens_for_main'] = None
     
-    if st.button("Lookup", type="primary"):
+    if st.button("Lookup", type="primary") or auto_lookup:
         with st.spinner("Resolving ENS and fetching data..."):
             w3 = Web3(Web3.HTTPProvider(ETH_RPC_URL))
             address = w3.ens.address(ens_name)
@@ -93,9 +92,42 @@ if page == "ENS Main Lookup":
             
             with col4:
                 st.metric(label="📈 ETH Price", value=f"${price:,.2f}")
+            
+            # Last 10 Internal Transactions
+            st.subheader("📜 Last 10 Internal Transactions")
+            tx_url = (
+                f"https://api.etherscan.io/v2/api"
+                f"?chainid=1"
+                f"&module=account"
+                f"&action=txlistinternal"
+                f"&address={address}"
+                f"&startblock=0"
+                f"&endblock=99999999"
+                f"&page=1"
+                f"&offset=10"
+                f"&sort=desc"
+                f"&apikey={ETHERSCAN_API_KEY}"
+            )
+            tx_res = requests.get(tx_url)
+            tx_data = tx_res.json()
+            txs = tx_data.get('result', [])
+            
+            if isinstance(txs, list) and txs:
+                tx_table = []
+                for tx in txs:
+                    tx_table.append({
+                        "Hash": tx.get('hash', '')[:16] + "...",
+                        "From": tx.get('from', '')[:10] + "...",
+                        "To": tx.get('to', '')[:10] + "...",
+                        "Value (ETH)": f"{float(tx.get('value', '0')) / 1e18:.4f}",
+                        "Timestamp": tx.get('timeStamp', '')
+                    })
+                df_tx = pd.DataFrame(tx_table)
+                st.dataframe(df_tx, use_container_width=True)
+            else:
+                st.info("No internal transactions found.")
 
-elif page == "ENS List Lookup":
-    st.title("🕸️ ENS List Lookup & Social Graph")
+with tab2:
     st.write("Enter a comma-separated list of ENS names to visualize their social network.")
     
     ens_list = st.text_area("ENS Names (comma separated)", "vitalik.eth, balajis.eth, brantley.eth")
