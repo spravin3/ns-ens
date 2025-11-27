@@ -1,3 +1,7 @@
+pandas
+networkx
+pandas
+networkx
 streamlit
 web3
 requests
