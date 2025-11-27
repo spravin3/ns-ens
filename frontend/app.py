@@ -25,8 +25,7 @@ if st.button("Lookup"):
             st.stop()
         st.write(f"**Address:** {address}")
 
-
-        # Step 2: ETH balance
+        # ETH balance and USD value
         bal_url = (
             f"https://api.etherscan.io/v2/api"
             f"?chainid=1"
@@ -40,39 +39,55 @@ if st.button("Lookup"):
         bal_data = bal_res.json()
         balance_wei = int(bal_data.get('result', '0'))
         balance_eth = balance_wei / 1e18
-        st.write(f"**ETH Balance:** {balance_eth:.6f} ETH")
 
-        # Step 3: ENS text records (avatar, display name, bio, socials)
-        profile = {}
+        # ETH price (CoinMarketCap)
+        price = None
         try:
-            resolver = w3.ens.resolver(ens_name)
-            if resolver:
-                for key in [
-                    'avatar', 'display', 'description', 'email', 'url', 'twitter', 'github', 'discord', 'telegram', 'reddit',
-                    'eth', 'btc', 'ltc', 'doge', 'contenthash'
-                ]:
-                    value = resolver.get_text(key)
-                    if value:
-                        profile[key] = value
+            price_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=ETH"
+            headers = {"X-CMC_PRO_API_KEY": COINMARKETCAP_API_KEY}
+            price_res = requests.get(price_url, headers=headers)
+            price_data = price_res.json()
+            price = price_data['data']['ETH']['quote']['USD']['price']
         except Exception:
-            pass
-        for key, label in [
-            ('avatar', 'Avatar'),
-            ('display', 'Display Name'),
-            ('description', 'Bio/Description'),
-            ('url', 'Website'),
-            ('email', 'Email'),
-            ('twitter', 'Twitter'),
-            ('github', 'GitHub'),
-            ('discord', 'Discord'),
-            ('telegram', 'Telegram'),
-            ('reddit', 'Reddit')
-        ]:
-            if profile.get(key):
-                st.write(f"**{label}:** {profile[key]}")
+            price = None
+        if price:
+            st.write(f"**ETH Balance:** {balance_eth:.6f} ETH (${balance_eth * price:,.2f} @ ${price:,.2f}/ETH)")
+        else:
+            st.write(f"**ETH Balance:** {balance_eth:.6f} ETH (USD price unavailable)")
 
+        # Last 10 internal transactions (Etherscan V2)
+        tx_url = (
+            f"https://api.etherscan.io/v2/api"
+            f"?chainid=1"
+            f"&module=account"
+            f"&action=txlistinternal"
+            f"&address={address}"
+            f"&startblock=0"
+            f"&endblock=99999999"
+            f"&page=1"
+            f"&offset=10"
+            f"&sort=desc"
+            f"&apikey={ETHERSCAN_API_KEY}"
+        )
+        tx_res = requests.get(tx_url)
+        tx_data = tx_res.json()
+        txs = tx_data.get('result', [])
+        if isinstance(txs, list) and txs:
+            with st.expander("Last 10 Internal Transactions"):
+                import pandas as pd
+                tx_table = []
+                for tx in txs:
+                    tx_table.append({
+                        "Hash": tx.get('hash', ''),
+                        "From": tx.get('from', ''),
+                        "To": tx.get('to', ''),
+                        "Value (ETH)": float(tx.get('value', '0')) / 1e18,
+                        "Time": tx.get('timeStamp', '')
+                    })
+                df = pd.DataFrame(tx_table)
+                st.dataframe(df)
 
-        # Step 4: Token Holdings (SIM API)
+        # Token Holdings (SIM API)
         if SIM_API_KEY:
             sim_bal_url = f"https://api.sim.dev.dune.com/v1/evm/balances/{address}?chain_ids=1&exclude_spam_tokens=true"
             sim_headers = {"X-Sim-Api-Key": SIM_API_KEY}
@@ -81,18 +96,22 @@ if st.button("Lookup"):
                 sim_bal_data = sim_bal_res.json()
                 balances = sim_bal_data.get('balances', [])
                 if balances:
-                    st.write("\n**Token Holdings (SIM API):**")
-                    for bal in balances:
-                        symbol = bal.get('symbol', '')
-                        name = bal.get('name', '')
-                        amount = int(bal.get('amount', '0')) / (10 ** int(bal.get('decimals', 0))) if bal.get('decimals') else float(bal.get('amount', '0'))
-                        usd = bal.get('value_usd', None)
-                        price = bal.get('price_usd', None)
-                        line = f"- {symbol} ({name}): {amount:.4f}"
-                        if usd:
-                            line += f" | USD Value: ${usd:,.2f}"
-                        if price:
-                            line += f" | Price: ${price:,.2f}"
-                        st.write(line)
+                    with st.expander("Token Holdings (SIM API)"):
+                        token_table = []
+                        for bal in balances:
+                            symbol = bal.get('symbol', '')
+                            name = bal.get('name', '')
+                            amount = int(bal.get('amount', '0')) / (10 ** int(bal.get('decimals', 0))) if bal.get('decimals') else float(bal.get('amount', '0'))
+                            usd = bal.get('value_usd', None)
+                            price = bal.get('price_usd', None)
+                            token_table.append({
+                                "Symbol": symbol,
+                                "Name": name,
+                                "Amount": amount,
+                                "USD Value": usd,
+                                "Price": price
+                            })
+                        df_tokens = pd.DataFrame(token_table)
+                        st.dataframe(df_tokens)
             except Exception as e:
                 st.write(f"SIM API balances error: {e}")
